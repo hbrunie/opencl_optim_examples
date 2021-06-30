@@ -7,8 +7,8 @@ cluster-system := cos
 use-module := strict-flags opencl_linux opencl-kernel
 
 # Common flags
-cflags += -DCL_TARGET_OPENCL_VERSION=200 -DCL_USE_DEPRECATED_OPENCL_1_2_APIS -DCL_HPP_TARGET_OPENCL_VERSION=200
-cflags += -g3 -O2 -fPIC -fno-exceptions
+cflags += -DCL_TARGET_OPENCL_VERSION=300 -DCL_USE_DEPRECATED_OPENCL_1_2_APIS -DCL_HPP_TARGET_OPENCL_VERSION=300
+cflags += -g3 -O3 -fPIC -fno-exceptions
 
 HAVE_FAST_MATH ?= 1
 OUTPUT_DISPLAY ?= 1
