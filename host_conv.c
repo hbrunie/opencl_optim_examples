@@ -48,12 +48,17 @@
 
 #include "ocl_utils.h"
 
+#define NDIMS 2
+
 int main(int argc, char* argv[])
 {
+    (void) argc;
+    (void) argv;
     int ret = 0;
     // kernel information
     const int kernel_width = 3;
     const int kernel_height = 3;
+    const size_t kernel_size = kernel_width * kernel_height;
 
     // Channels information
     const int channels_out = 32;
@@ -106,8 +111,11 @@ int main(int argc, char* argv[])
     // ===================================================================
     struct kernel_desc_s {
         const char    *name;
-        size_t        globalSize[2];
-        size_t        localSize[2];
+        size_t        globalSize[NDIMS];
+        size_t        localSize[NDIMS];
+        float         *input_ptr;
+        float         *output_ptr;
+        float         *kernel_ptr;
         // additional fields to handle multi-kernels
         cl_kernel     ocl_kernel;
         cl_mem        ocl_image_output;
@@ -119,8 +127,11 @@ int main(int argc, char* argv[])
     } kernel_desc[] = {
         {
             .name       = "convolution",
-            .globalSize = {, image_height},// TODO
-            .localSize  = {max_workgroup_size, 1},//TODO
+            .globalSize = {4*28, 4*28},
+            .localSize  = {4,4},
+            .input_ptr  = (float*) malloc(sizeof(float) * channels_in * (image_width+kernel_width) * (image_height+kernel_height)),
+            .output_ptr = (float*) malloc(sizeof(float) * image_size * channels_out),
+            .kernel_ptr = (float*) malloc(sizeof(float) * channels_out * channels_in * kernel_size)
         }
     };
 
@@ -131,12 +142,13 @@ int main(int argc, char* argv[])
     // Buffer creation, Program creation & Kernel arguments
     // ===================================================================
     // Create READ-ONLY input image
+    char * image_ptr = (char*) malloc(sizeof(char) * image_size);
     ocl_image_input = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                                     image_size, img.row_pointers[0], &err);
+                                     image_size, image_ptr, &err);
     OCL_CHECK_ERROR_QUIT(err, "Failed to clCreateBuffer for input image");
 
     // free allocated buffer for image reading (img.row_pointers[])
-    free_img_row_pointers(&img);
+    free(image_ptr);
 
     // Create program
     program = ocl_CreateProgramFromBinary(context, device_id, "output/opencl_kernels/convolution.cl.pocl");
@@ -160,11 +172,11 @@ int main(int argc, char* argv[])
         // set arguments
         cl_uint nb_arguments = 0;
         err  = clSetKernelArg(kernel_desc[i].ocl_kernel, nb_arguments++,
-                sizeof(cl_mem), &kernel_desc[i].compute);
+                sizeof(cl_mem), &kernel_desc[i].output_ptr);
         err |= clSetKernelArg(kernel_desc[i].ocl_kernel, nb_arguments++,
-                sizeof(cl_mem), &kernel_desc[i].A);
+                sizeof(cl_mem), &kernel_desc[i].input_ptr);
         err |= clSetKernelArg(kernel_desc[i].ocl_kernel, nb_arguments++,
-                sizeof(cl_mem), &kernel_desc[i].W);
+                sizeof(cl_mem), &kernel_desc[i].kernel_ptr);
         OCL_CHECK_ERROR_QUIT(err, "Failed to clSetKernelArg %s", kernel_desc[i].name);
     }
 
@@ -229,6 +241,7 @@ int main(int argc, char* argv[])
     for (int i = 0; i < nb_kernels; i++)
     {
         // TODO correctness check
+        bool passed = true;
         if (kernel_desc[i].ocl_have_native_kernel) {
             printf("[HOST] Kernel %19s(): Host cold %6.3f ms hot %6.3f ms"
                    " - Device cold %6.3f ms hot %6.3f ms"
